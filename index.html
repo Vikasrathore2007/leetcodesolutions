@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Promptsmith – check and rebuild your prompt</title>
+<meta name="description" content="Paste a prompt, see which of eight essentials it is missing, and get a stronger structured version. Runs fully in your browser.">
+<style>
+:root{--paper:#f6f8fb;--card:#fff;--ink:#14213d;--muted:#55607a;--line:#d6dce8;--mark:#ffd60a;--ok:#0f7b6c;--bad:#b3261e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:32px 20px 56px}
+h1{font:700 clamp(2rem,5vw,3.2rem)/1.1 Georgia,"Iowan Old Style",serif;margin:0 0 10px;letter-spacing:-.01em}
+h1 mark{background:var(--mark);color:var(--ink);padding:0 .15em}
+.lead{max-width:60ch;color:var(--muted);margin:0 0 28px}
+.grid{display:grid;grid-template-columns:1.15fr 1fr;gap:20px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+h2{font:600 1.05rem/1.3 Georgia,serif;margin:0 0 10px}
+label{font-weight:600;display:block;margin-bottom:6px}
+textarea{width:100%;min-height:240px;resize:vertical;border:1px solid var(--line);border-radius:6px;padding:12px;font:inherit;color:var(--ink);background:#fff}
+textarea:focus,button:focus-visible{outline:3px solid var(--mark);outline-offset:1px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+button{font:inherit;font-weight:600;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:6px;padding:8px 14px;cursor:pointer}
+button.alt{background:#fff;color:var(--ink)}
+.score{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+.score b{font:700 3rem/1 Georgia,serif}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-bottom:14px}
+.bar i{display:block;height:100%;width:0;background:var(--ok);transition:width .3s}
+ul{list-style:none;margin:0;padding:0}
+li{padding:8px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:22px 1fr;gap:8px}
+li:first-child{border-top:0}
+.s{font-weight:700}.pass .s{color:var(--ok)}.fail .s{color:var(--bad)}
+li small{display:block;color:var(--muted)}
+pre{white-space:pre-wrap;word-wrap:break-word;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:12px;margin:0;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace}
+.full{grid-column:1/-1}
+footer{margin-top:28px;color:var(--muted);font-size:.9rem}
+@media(prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>Promptsmith: find what your <mark>prompt</mark> is missing</h1>
+<p class="lead">Paste a prompt. Promptsmith checks it against eight essentials of a clear prompt, explains each gap, and builds a stronger version you can copy. Nothing leaves your browser.</p>
+<div class="grid">
+<section>
+<label for="p">Your prompt</label>
+<textarea id="p" placeholder="Example: Write a blog post about remote work."></textarea>
+<div class="row">
+<button id="sample" type="button">Load a weak example</button>
+<button id="clear" type="button" class="alt">Clear</button>
+</div>
+</section>
+<section aria-live="polite">
+<h2>Prompt strength</h2>
+<div class="score"><b id="n">0</b><span>out of 100</span></div>
+<div class="bar"><i id="b"></i></div>
+<ul id="list"></ul>
+</section>
+<section class="full">
+<h2>Rebuilt prompt</h2>
+<pre id="out">Type or paste a prompt above to see the rebuilt version.</pre>
+<div class="row"><button id="copy" type="button">Copy rebuilt prompt</button><span id="msg" role="status"></span></div>
+</section>
+</div>
+<footer>Checks are rule-based, so results are instant and identical every time. Fill every [bracket] before you send the rebuilt prompt.</footer>
+</main>
+<script>
+const CHECKS=[
+{id:"role",name:"Role",tip:"Say who the AI should act as, e.g. “You are a senior editor.”",re:/\b(you are|act as|acting as|as an? [a-z]+ (expert|editor|tutor|engineer|analyst)|role)\b/i,fill:"You are [an expert in the topic]."},
+{id:"task",name:"Clear task",tip:"Start with an action verb such as write, compare, summarize or classify.",re:/\b(write|create|summari[sz]e|explain|analy[sz]e|generate|list|compare|translate|classify|extract|draft|design|build|review|plan|rewrite|describe|outline)\b/i,fill:null},
+{id:"context",name:"Context",tip:"Add background: the situation, the source material, why you need this. Aim for 30+ words.",test:t=>t.trim().split(/\s+/).filter(Boolean).length>=30,fill:"[Background the AI needs: situation, source material, what you already tried.]"},
+{id:"audience",name:"Audience",tip:"Name who will read or use the result.",re:/\b(audience|beginners?|experts?|students?|customers?|readers?|users?|executives?|developers?|kids|children|managers?|team|investors?)\b/i,fill:"[Who will read or use the result]"},
+{id:"constraints",name:"Constraints",tip:"Set limits: length, things to avoid, must-haves.",re:/\b(must|should|do not|don't|avoid|only|at most|at least|no more than|limit|within|under)\b|\d+\s?(words|sentences|bullets|items|paragraphs|characters|minutes)/i,fill:"[Length limit, things to avoid, must-include points]"},
+{id:"format",name:"Output format",tip:"Say how the answer should look: bullets, table, JSON, numbered steps.",re:/\b(format|json|table|bullets?|markdown|numbered|steps|csv|headings?|paragraphs?|outline)\b/i,fill:"[Bullets, table, JSON, numbered steps, etc.]"},
+{id:"example",name:"Example",tip:"Show one sample of what good looks like.",re:/\b(example|e\.g\.|for instance|such as|sample)\b/i,fill:"[Paste one short example of a good answer]"},
+{id:"goal",name:"Goal or tone",tip:"State the goal or the tone, e.g. “persuasive, friendly, concise.”",re:/\b(goal|success|criteria|so that|tone|style|persuasive|friendly|formal|concise|accurate|professional|casual)\b/i,fill:"[Goal of the result and the tone to use]"}
+];
+const $=id=>document.getElementById(id);
+const heads={role:"Role",context:"Context",audience:"Audience",constraints:"Constraints",format:"Output format",example:"Example",goal:"Goal and tone"};
+function run(){
+  const t=$("p").value, has=t.trim().length>0;
+  const res=CHECKS.map(c=>({c,ok:has&&(c.test?c.test(t):c.re.test(t))}));
+  const pass=res.filter(r=>r.ok).length, score=Math.round(pass/CHECKS.length*100);
+  $("n").textContent=score; $("b").style.width=score+"%";
+  const ul=$("list"); ul.textContent="";
+  res.forEach(({c,ok})=>{
+    const li=document.createElement("li"); li.className=ok?"pass":"fail";
+    const s=document.createElement("span"); s.className="s"; s.textContent=ok?"✓":"✗";
+    const d=document.createElement("div"); d.textContent=c.name;
+    if(!ok){const sm=document.createElement("small"); sm.textContent=c.tip; d.appendChild(sm);}
+    li.append(s,d); ul.appendChild(li);
+  });
+  if(!has){$("out").textContent="Type or paste a prompt above to see the rebuilt version.";return;}
+  const parts=[], miss=Object.fromEntries(res.map(r=>[r.c.id,!r.ok]));
+  const order=["role","task","context","audience","constraints","format","example","goal"];
+  order.forEach(id=>{
+    const c=CHECKS.find(x=>x.id===id);
+    if(id==="task"){parts.push("# Task\n"+t.trim()+(miss.task?"\n[Start with a clear action verb.]":""));}
+    else if(miss[id]){parts.push("# "+heads[id]+"\n"+c.fill);}
+  });
+  $("out").textContent=parts.join("\n\n");
+}
+$("p").addEventListener("input",run);
+$("sample").onclick=()=>{$("p").value="Write a blog post about remote work.";run();};
+$("clear").onclick=()=>{$("p").value="";$("msg").textContent="";run();$("p").focus();};
+$("copy").onclick=async()=>{
+  try{await navigator.clipboard.writeText($("out").textContent);$("msg").textContent="Copied.";}
+  catch(e){const r=document.createRange();r.selectNodeContents($("out"));const s=getSelection();s.removeAllRanges();s.addRange(r);$("msg").textContent="Press Ctrl+C to copy.";}
+};
+run();
+</script>
+</body>
+</html>
